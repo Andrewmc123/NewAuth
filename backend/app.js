@@ -45,9 +45,7 @@ app.use(
 );
 
 // Connect routes
-app.use(routes);                                    // Use our defined routes
-
-// --- ERROR HANDLING MIDDLEWARE BELOW ---
+app.use(routes);                                    // Use our defined routes                                                                                                                                                                                                                                                            
 
 // Catch unhandled requests and forward to error handler.
 app.use((_req, _res, next) => {                     // 404 Not Found handler
