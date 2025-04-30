@@ -1,85 +1,102 @@
 const express = require('express');
-require('express-async-errors');                    // Automatically catches errors in async route handlers
-const morgan = require('morgan');                   // HTTP request logger
-const cors = require('cors');                       // Cross-Origin Resource Sharing
-const csurf = require('csurf');                     // CSRF protection
-const helmet = require('helmet');                   // Security headers
-const cookieParser = require('cookie-parser');      // Parse cookies from requests
-const { ValidationError } = require('sequelize');   // Import Sequelize validation error
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+const app = express();
 
-const { environment } = require('./config');        // Import environment configuration
-const isProduction = environment === 'production';  // Check if we're in production
-const routes = require('./routes');                 // Import routes
+// Database setup
+const db = new sqlite3.Database(path.join(__dirname, 'database.db'), (err) => {
+  if (err) {
+    return console.error('Database connection error:', err.message);
+  }
+  console.log('Connected to the SQLite database.');
+});
 
-const app = express();                              // Create Express application
-
-// Connect morgan middleware for logging
-app.use(morgan('dev'));                             // Log HTTP requests
-
-// Parse cookies and JSON bodies
-app.use(cookieParser());                            // Parse Cookie header and populate req.cookies
-app.use(express.json());                            // Parse JSON request bodies
-
-// Security middleware
-if (!isProduction) {
-  // Enable CORS only in development
-  app.use(cors());                                  // Allow cross-origin requests in development
+// Create tables and insert sample data
+function initializeDatabase() {
+  db.serialize(() => {
+    // Create Users table
+    db.run(`
+      CREATE TABLE IF NOT EXISTS Users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        email TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `, (err) => {
+      if (err) {
+        console.error('Error creating Users table:', err);
+      } else {
+        console.log('Users table created/verified');
+        
+        // Insert sample users (only if table was empty)
+        db.get("SELECT COUNT(*) as count FROM Users", (err, row) => {
+          if (err) {
+            console.error('Error checking Users table:', err);
+            return;
+          }
+          
+          if (row.count === 0) {
+            const sampleUsers = [
+              ['john_doe', 'john@example.com', '$2a$10$N9qo8uLOickgx2ZMRZoMy.Mrq4H9Q.rX5Z8X.E3F/6Z7JYQ8TjWOW'], // password: "password123"
+              ['jane_smith', 'jane@example.com', '$2a$10$N9qo8uLOickgx2ZMRZoMy.Mrq4H9Q.rX5Z8X.E3F/6Z7JYQ8TjWOW']  // password: "password123"
+            ];
+            
+            const stmt = db.prepare("INSERT INTO Users (username, email, password_hash) VALUES (?, ?, ?)");
+            
+            sampleUsers.forEach(user => {
+              stmt.run(user, (err) => {
+                if (err) {
+                  console.error('Error inserting user:', err);
+                }
+              });
+            });
+            
+            stmt.finalize();
+            console.log('Inserted sample users');
+          }
+        });
+      }
+    });
+  });
 }
 
-// Helmet helps set security headers
-app.use(
-  helmet.crossOriginResourcePolicy({
-    policy: "cross-origin"                          // Allow loading resources from different origins
-  })
-);
+// Initialize database
+initializeDatabase();
 
-// Set the _csrf token and create req.csrfToken method
-app.use(
-  csurf({
-    cookie: {
-      secure: isProduction,                         // HTTPS only in production
-      sameSite: isProduction && "Lax",              // Controls when cookies are sent
-      httpOnly: true                                // Prevents JavaScript access to the cookie
+// Middleware
+app.use(express.json());
+
+// Basic route to test users
+app.get('/users', (req, res) => {
+  db.all("SELECT id, username, email FROM Users", [], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
     }
-  })
-);
-
-// Connect routes
-app.use(routes);                                    // Use our defined routes                                                                                                                                                                                                                                                            
-
-// Catch unhandled requests and forward to error handler.
-app.use((_req, _res, next) => {                     // 404 Not Found handler
-  const err = new Error("The requested resource couldn't be found.");
-  err.title = "Resource Not Found";
-  err.errors = { message: "The requested resource couldn't be found." };
-  err.status = 404;
-  next(err);
-});
-
-// Process sequelize errors
-app.use((err, _req, _res, next) => {                // Sequelize error handler
-  // check if error is a Sequelize error:
-  if (err instanceof ValidationError) {
-    let errors = {};
-    for (let error of err.errors) {
-      errors[error.path] = error.message;
-    }
-    err.title = 'Validation error';
-    err.errors = errors;
-  }
-  next(err);
-});
-
-// Error formatter
-app.use((err, _req, res, _next) => {                // General error formatter
-  res.status(err.status || 500);
-  console.error(err);
-  res.json({
-    title: err.title || 'Server Error',
-    message: err.message,
-    errors: err.errors,
-    stack: isProduction ? null : err.stack          // Only include stack in development
+    res.json(rows);
   });
 });
 
-module.exports = app;
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send('Something broke!');
+});
+
+// Start server
+const PORT = process.env.PORT || 8000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
+// Close database connection when app exits
+process.on('SIGINT', () => {
+  db.close((err) => {
+    if (err) {
+      console.error(err.message);
+    }
+    console.log('Closed the database connection.');
+    process.exit(0);
+  });
+});
