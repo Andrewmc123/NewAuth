@@ -6,18 +6,14 @@ const { secret, expiresIn } = jwtConfig;          // Extract JWT settings
 
 // Sends a JWT Cookie
 const setTokenCookie = (res, user) => {
-  // Create the token with user data
-  const safeUser = {                              // Create a safe user object without sensitive data
+  // Create the token.
+  const safeUser = {
     id: user.id,
     email: user.email,
     username: user.username,
+    firstName: user.firstName,                   // Include firstName in token
+    lastName: user.lastName                      // Include lastName in token
   };
-  const token = jwt.sign(
-    { data: safeUser },                           // Payload to encode in the JWT
-    secret,                                       // Secret key for signing
-    { expiresIn: parseInt(expiresIn) }            // Token expiration (604,800 seconds = 1 week)
-  );
-
   const isProduction = process.env.NODE_ENV === "production";
 
   // Set the token cookie

@@ -1,85 +1,87 @@
 const express = require('express');
-const { Op } = require('sequelize');           // Import Sequelize operators
-const bcrypt = require('bcryptjs');            // Import bcrypt for password comparison
-
-const { setTokenCookie, restoreUser } = require('../../utils/auth');  // Import auth utilities
-const { User } = require('../../db/models');   // Import User model
+const { Op } = require('sequelize');
+const bcrypt = require('bcryptjs');
+const { setTokenCookie, restoreUser } = require('../../utils/auth');
+const { User } = require('../../db/models');
 
 const router = express.Router();
-const { check } = require('express-validator');  
-const { handleValidationErrors } = require('../../utils/validation'); 
+const { check } = require('express-validator');
+const { handleValidationErrors } = require('../../utils/validation');
 
-const validateLogin = [                                           // Create array of middleware
-  check('credential')                                             // Validate credential field
-    .exists({ checkFalsy: true })                                // Must exist and not be falsy
-    .notEmpty()                                                  // Must not be empty
-    .withMessage('Please provide a valid email or username.'),   // Error message
-  check('password')                                              // Validate password field
-    .exists({ checkFalsy: true })                                // Must exist and not be falsy
-    .withMessage('Please provide a password.'),                  // Error message
-  handleValidationErrors                                         // Process validation results
+// Login validation middleware
+const validateLogin = [
+  check('credential')
+    .exists({ checkFalsy: true })
+    .notEmpty()
+    .withMessage('Please provide a valid email or username.'),
+  check('password')
+    .exists({ checkFalsy: true })
+    .withMessage('Please provide a password.'),
+  handleValidationErrors
 ];
 
-// Log in
-router.post(
-  '/',
-  validateLogin,                                                // Apply validation middleware
-  async (req, res, next) => {
-    // ... existing login route handler
-  }
-);
-// Log in
-router.post('/', async (req, res, next) => {   // POST /api/session endpoint
-  const { credential, password } = req.body;   // Extract credentials from request body
+// Login route
+router.post('/', validateLogin, async (req, res, next) => {
+  const { credential, password } = req.body;
 
-  // Find the user by either username or email
-  const user = await User.unscoped().findOne({  // Use unscoped() to include hashedPassword
-    where: {
-      [Op.or]: {                              // Use OR operator to match either field
-        username: credential,
-        email: credential
+  try {
+    // Find user by username or email
+    const user = await User.findOne({
+      where: {
+        [Op.or]: {
+          username: credential,
+          email: credential
+        }
       }
+    });
+
+    // Validate credentials
+    if (!user || !bcrypt.compareSync(password, user.hashedPassword.toString())) {
+      const err = new Error('Login failed');
+      err.status = 401;
+      err.title = 'Login failed';
+      err.errors = { credential: 'The provided credentials were invalid.' };
+      return next(err);
     }
-  });
 
-  // Check if user exists and password is correct
-  if (!user || !bcrypt.compareSync(password, user.hashedPassword.toString())) {
-    const err = new Error('Login failed');     // Create error for failed login
-    err.status = 401;                          // Set HTTP status code to 401 Unauthorized
-    err.title = 'Login failed';
-    err.errors = { credential: 'The provided credentials were invalid.' };
-    return next(err);                          // Pass error to error-handling middleware
-  }
-
-  // Create a safe user object (without hashedPassword)
-  const safeUser = {
-    id: user.id,
-    email: user.email,
-    username: user.username,
-  };
-
-  // Set the JWT cookie
-  await setTokenCookie(res, safeUser);         // Create and set JWT cookie
-
-  // Return the user information
-  return res.json({
-    user: safeUser                            // Return user data as JSON
-  });
-});
-
-// Restore session user
-router.get('/', (req, res) => {                 // GET /api/session endpoint
-  const { user } = req;                         // Get user from request object
-  if (user) {
-    const safeUser = {                          // Create safe user object
+    // Prepare safe user object
+    const safeUser = {
       id: user.id,
       email: user.email,
       username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName
     };
+
+    // Set authentication cookie
+    await setTokenCookie(res, safeUser);
+
+    // Return user data
     return res.json({
-      user: safeUser                           // Return user data if logged in
+      user: safeUser
     });
-  } else return res.json({ user: null });       // Return null if not logged in
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Session restoration route
+router.get('/', (req, res) => {
+  const { user } = req;
+  
+  if (user) {
+    const safeUser = {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName
+    };
+    return res.json({ user: safeUser });
+  }
+  
+  return res.json({ user: null });
 });
 
 module.exports = router;

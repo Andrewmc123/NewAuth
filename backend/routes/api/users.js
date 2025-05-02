@@ -7,29 +7,34 @@ const { User } = require('../../db/models');     // User model
 const router = express.Router();
 
 // Sign up
-router.post('/', async (req, res) => {           // POST /api/users endpoint
-  const { email, password, username } = req.body;  // Extract user data
-  
-  // Hash the password
-  const hashedPassword = bcrypt.hashSync(password);  // Create secure hash
-  
-  // Create a new user
-  const user = await User.create({ email, username, hashedPassword });  // Save to DB
+router.post(
+  '/',
+  validateSignup,
+  async (req, res) => {
+    const { email, password, username, firstName, lastName } = req.body;  // Extract new fields
+    const hashedPassword = bcrypt.hashSync(password);
+    const user = await User.create({ 
+      email, 
+      username, 
+      hashedPassword,
+      firstName,                                 // Include firstName
+      lastName                                   // Include lastName
+    });
 
-  // Create a safe user object (without hashedPassword)
-  const safeUser = {
-    id: user.id,
-    email: user.email,
-    username: user.username,
-  };
+    const safeUser = {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      firstName: user.firstName,                 // Include in response
+      lastName: user.lastName                    // Include in response
+    };
 
-  // Set the JWT cookie
-  await setTokenCookie(res, safeUser);           // Login the new user automatically
+    await setTokenCookie(res, safeUser);
 
-  // Return the user information
-  return res.json({
-    user: safeUser                              // Return user data
-  });
-});
+    return res.json({
+      user: safeUser
+    });
+  }
+);
 
 module.exports = router;
