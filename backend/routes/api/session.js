@@ -46,5 +46,4 @@ router.post('/', async (req, res, next) => {   // POST /api/session endpoint
   });
 });
 
-
 module.exports = router;
