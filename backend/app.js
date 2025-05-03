@@ -11,7 +11,43 @@ const db = new sqlite3.Database(path.join(__dirname, 'database.db'), (err) => {
   console.log('Connected to the SQLite database.');
 });
 
-// Create tables and insert sample data
+// Middleware
+app.use(express.json());
+
+// Basic route to test users
+app.get('/users', (req, res) => {
+  db.all("SELECT id, username, email FROM Users", [], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(rows);
+  });
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send('Something broke!');
+});
+
+// Start server
+const PORT = process.env.PORT || 8000;
+const HOST = '0.0.0.0'; // Important for Render
+
+// Start the server first
+const server = app.listen(PORT, HOST, () => {
+  console.log(`Server running on http://${HOST}:${PORT}`);
+  
+  // Then initialize database (moved after server starts)
+  initializeDatabase();
+});
+
+// Initialize database function (moved after server code)
 function initializeDatabase() {
   db.serialize(() => {
     // Create Users table
@@ -39,8 +75,8 @@ function initializeDatabase() {
           
           if (row.count === 0) {
             const sampleUsers = [
-              ['john_doe', 'john@example.com', '$2a$10$N9qo8uLOickgx2ZMRZoMy.Mrq4H9Q.rX5Z8X.E3F/6Z7JYQ8TjWOW'], // password: "password123"
-              ['jane_smith', 'jane@example.com', '$2a$10$N9qo8uLOickgx2ZMRZoMy.Mrq4H9Q.rX5Z8X.E3F/6Z7JYQ8TjWOW']  // password: "password123"
+              ['john_doe', 'john@example.com', '$2a$10$N9qo8uLOickgx2ZMRZoMy.Mrq4H9Q.rX5Z8X.E3F/6Z7JYQ8TjWOW'],
+              ['jane_smith', 'jane@example.com', '$2a$10$N9qo8uLOickgx2ZMRZoMy.Mrq4H9Q.rX5Z8X.E3F/6Z7JYQ8TjWOW']
             ];
             
             const stmt = db.prepare("INSERT INTO Users (username, email, password_hash) VALUES (?, ?, ?)");
@@ -61,34 +97,6 @@ function initializeDatabase() {
     });
   });
 }
-
-// Initialize database
-initializeDatabase();
-
-// Middleware
-app.use(express.json());
-
-// Basic route to test users
-app.get('/users', (req, res) => {
-  db.all("SELECT id, username, email FROM Users", [], (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-    res.json(rows);
-  });
-});
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).send('Something broke!');
-});
-
-// Start server
-const PORT = process.env.PORT || 8000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
 
 // Close database connection when app exits
 process.on('SIGINT', () => {
