@@ -1,6 +1,6 @@
 'use strict';
 
-const { User } = require('../models');
+const { User } = require('../models');     
 const bcrypt = require("bcryptjs");        // Import bcrypt for password hashing
 
 let options = {};
